@@ -1,0 +1,422 @@
+modules:
+  rovo:agent:
+    - key: prereg-agent
+      name: Prereg
+      description: Locks an A/B test's decision rule before launch and reports the verdict Prereg's code computes under that plan.
+      prompt: >
+        You are Prereg. You help teams decide A/B tests by the plan they locked in Jira before launch. Prereg's code
+        computes every number and every verdict (Ship, Don't ship, Inconclusive, Not ready, Invalid, Stop: harm).
+        Never compute, estimate or round a statistic yourself. Call an action and quote what it returns.
+
+
+        What you do:
+
+        1. "Can we ship this?" Call get-verdict (it uses the open work item when no key is given). State the verdict
+        and its first reason in one sentence, then at most four bullets.
+
+        2. Not ready: say so and give the earliest decision day and progress. Never hint at which arm is ahead: the
+        action does not return it and you must not guess.
+
+        3. Invalid: say the results cannot be trusted, give the observed split against the plan and the p-value from
+        the reasons, then list the causes the action returned. If a later readout fixed it, say what changed using the
+        readout's note.
+
+        4. Submitting results: pass the user's CSV to submit-results exactly as given, character for character. Do not
+        reformat, fix, add or remove columns. If the action rejects it, quote the error and ask the user. Show the echoed
+        units per arm so the user can check them.
+
+        5. Drafting a plan: if a Confluence page is given, call get-brief. Propose armsSpec (control first, for example
+        control:50, b:50), primarySpec (key | proportion or mean | increase or decrease | baseline 4% | mde 10%),
+        guardrailsSpec (key | proportion | increase is harm | margin 1.0pp, several separated by ;) and secondarySpec,
+        and explain each margin in plain words. Call draft-plan only after the user agrees.
+
+        6. Call lock-plan and amend-plan only after explicit agreement in this conversation. For amend-plan, say that
+        the change is recorded as made after launch and never changes the official verdict, which stays with plan v1.
+
+        7. A metric that is not in the plan is exploratory: offer to note it in the decision record, never present it as
+        the result. Write the decision record with write-decision-record only after the user agrees.
+
+
+        Report a change as done only when the action's result says it succeeded, and name exactly what it returned
+        (for example the readout it stored). If the person cancels Rovo's review card, or no action result came back, say that
+        nothing was changed. Never describe a result you did not receive.
+
+
+        Keep answers short, verdict first. If an action returns an error, say what it says and what the user can do.
+      conversationStarters:
+        - Can we ship this experiment?
+        - Why is this test invalid?
+        - Draft a plan from this brief
+        - Write the decision record
+      actions:
+        - list-experiments
+        - get-experiment-plan
+        - submit-results
+        - get-verdict
+        - compute-sample-size
+        - draft-plan
+        - lock-plan
+        - amend-plan
+        - get-brief
+        - write-decision-record
+      skills:
+        - experiment-readout
+  rovo:skill:
+    - key: experiment-readout
+      source:
+        dir: skills/experiment-readout
+      dependencies:
+        tools:
+          - get-experiment-plan
+          - submit-results
+          - get-verdict
+  rovo:mcp:
+    - key: prereg-mcp
+      name: Prereg experiments
+      tools:
+        - list-experiments
+        - get-experiment-plan
+        - submit-results
+        - get-verdict
+        - compute-sample-size
+  action:
+    - key: list-experiments
+      name: List experiments
+      function: fn-list
+      actionVerb: GET
+      description: "Lists Prereg experiments with work item, state, verdict (ship, dont_ship, inconclusive, invalid, not_ready, stop_harm, draft), a short reason, the primary lift when the verdict allows it, and looks before readiness."
+      inputs:
+        state:
+          title: State
+          type: string
+          required: false
+          description: "Optional: draft, running or decided."
+        verdict:
+          title: Verdict
+          type: string
+          required: false
+          description: "Optional: ship, dont_ship, inconclusive, invalid, not_ready, stop_harm or draft."
+        projectKey:
+          title: Project key
+          type: string
+          required: false
+          description: "Optional Jira project key, for example GRO."
+    - key: get-experiment-plan
+      name: Get experiment plan
+      function: fn-plan
+      actionVerb: GET
+      description: "Returns the plan locked at launch: arms and weights, every metric with its role, cell format and definition, the exact CSV header results must use, planned units per arm, minimum days, launch date and fingerprint. Read it before building a results CSV."
+      inputs:
+        experiment:
+          title: Experiment
+          type: string
+          required: false
+          description: "EXP-n key or Jira work item key (for example GRO-3). Leave empty for the open work item."
+    - key: submit-results
+      name: Submit experiment results
+      function: fn-submit
+      actionVerb: CREATE
+      description: "Submits counts as a CSV with exactly the plan's header (arm, units, metric keys). Prereg validates it, stores an immutable readout and computes the verdict under plan v1. Extra columns are rejected; effects stay hidden until ready."
+      inputs:
+        experiment:
+          title: Experiment
+          type: string
+          required: false
+          description: "EXP-n key or Jira work item key. Leave empty for the open work item."
+        asOf:
+          title: As of
+          type: string
+          required: true
+          description: "The date the counts run up to, YYYY-MM-DD (UTC)."
+        resultsCsv:
+          title: Results CSV
+          type: string
+          required: true
+          description: "The CSV, unchanged. Proportions: successes or successes/denominator. Means: mean|sd or mean|sd|n."
+        source:
+          title: Source
+          type: string
+          required: false
+          description: "A short name for where the counts came from, such as a query or job name (not a person)."
+        note:
+          title: Note
+          type: string
+          required: false
+          description: "Optional note, for example what changed since the last readout."
+    - key: get-verdict
+      name: Get experiment verdict
+      function: fn-verdict
+      actionVerb: GET
+      description: "Returns the latest verdict Prereg computed under plan v1, its reasons, looks before readiness, amendments (exploratory only) and, when allowed, the primary, guardrail and secondary results."
+      inputs:
+        experiment:
+          title: Experiment
+          type: string
+          required: false
+          description: "EXP-n key or Jira work item key. Leave empty for the open work item."
+    - key: compute-sample-size
+      name: Compute sample size
+      function: fn-size
+      actionVerb: GET
+      description: "Returns the units needed in total and per arm to detect a relative change (MDE) with the given alpha and power, and the days needed at a daily rate."
+      inputs:
+        metricType:
+          title: Metric type
+          type: string
+          required: true
+          description: "proportion or mean."
+        baseline:
+          title: Baseline
+          type: number
+          required: true
+          description: "Baseline rate (for example 0.12 for 12%) or baseline mean."
+        sd:
+          title: Standard deviation
+          type: number
+          required: false
+          description: "Per-unit standard deviation, for means only."
+        mdeRelative:
+          title: MDE (relative)
+          type: number
+          required: true
+          description: "Relative change to detect, for example 0.05 for 5%."
+        arms:
+          title: Arms
+          type: integer
+          required: false
+          description: "Number of arms including the control (default 2)."
+        alpha:
+          title: Alpha
+          type: number
+          required: false
+          description: "Two-sided significance level (default 0.05)."
+        power:
+          title: Power
+          type: number
+          required: false
+          description: "Power (default 0.8)."
+        dailyUnits:
+          title: Units per day
+          type: number
+          required: false
+          description: "Optional expected units per day, to estimate the duration."
+    - key: draft-plan
+      name: Draft experiment plan
+      function: fn-draft
+      actionVerb: CREATE
+      description: "Saves a draft plan (not locked) for a Jira work item from spec strings and returns the computed sample size, or precise parse errors to fix. Call only after the user agreed to the proposed plan."
+      inputs:
+        issueKey:
+          title: Work item key
+          type: string
+          required: false
+          description: "The experiment's Jira work item, for example GRO-6. Leave empty for the open work item."
+        hypothesis:
+          title: Hypothesis
+          type: string
+          required: false
+          description: "One sentence."
+        armsSpec:
+          title: Arms
+          type: string
+          required: true
+          description: "control:50, b:50 (the first arm is the control)."
+        primarySpec:
+          title: Primary metric
+          type: string
+          required: true
+          description: "key | proportion or mean | increase or decrease | baseline 4% | mde 10% (means also need sd 2.5)."
+        guardrailsSpec:
+          title: Guardrails
+          type: string
+          required: false
+          description: "key | proportion | increase is harm | margin 1.0pp ; key | proportion | decrease is harm | margin 5%."
+        secondarySpec:
+          title: Secondary metrics
+          type: string
+          required: false
+          description: "key | mean ; key | proportion (descriptive only)."
+        minDays:
+          title: Minimum days
+          type: integer
+          required: false
+          description: "Default 14."
+        alpha:
+          title: Alpha
+          type: number
+          required: false
+          description: "Default 0.05."
+        power:
+          title: Power
+          type: number
+          required: false
+          description: "Default 0.8."
+    - key: lock-plan
+      name: Lock plan at launch
+      function: fn-lock
+      actionVerb: UPDATE
+      description: "Locks a draft plan as version 1 at launch and records the launch date and fingerprint. Only after the user explicitly agreed."
+      inputs:
+        experiment:
+          title: Experiment
+          type: string
+          required: false
+          description: "EXP-n key or work item key. Leave empty for the open work item."
+    - key: amend-plan
+      name: Amend plan after launch
+      function: fn-amend
+      actionVerb: UPDATE
+      description: "Records an amendment after launch as a new version with a reason. The official verdict stays with plan v1; the amended result is labelled exploratory."
+      inputs:
+        experiment:
+          title: Experiment
+          type: string
+          required: false
+          description: "EXP-n key or work item key."
+        field:
+          title: Field
+          type: string
+          required: true
+          description: "alpha, power, minDays, armsSpec, primarySpec, guardrailsSpec or secondarySpec."
+        value:
+          title: New value
+          type: string
+          required: true
+          description: "The new value, for example 0.10."
+        reason:
+          title: Reason
+          type: string
+          required: true
+          description: "Why the plan changes after launch."
+    - key: get-brief
+      name: Read experiment brief
+      function: fn-brief
+      actionVerb: GET
+      description: "Reads a Confluence experiment brief (for example a page made from the Experiment plan and results template) as the user, so a plan can be proposed from it."
+      inputs:
+        page:
+          title: Page
+          type: string
+          required: true
+          description: "Confluence page link or ID."
+    - key: write-decision-record
+      name: Write decision record
+      function: fn-record
+      actionVerb: CREATE
+      description: "Writes a Confluence decision-record page as the user with plan v1, the numbers Prereg computed, the verdict, looks and amendments."
+      inputs:
+        experiment:
+          title: Experiment
+          type: string
+          required: false
+          description: "EXP-n key or work item key."
+        spaceKey:
+          title: Space key
+          type: string
+          required: true
+          description: "Confluence space key for the page."
+  jira:globalPage:
+    - key: prereg-page
+      resource: page-ui
+      resolver:
+        function: fn-resolver
+      render: native
+      title: Prereg
+  jira:issuePanel:
+    - key: prereg-panel
+      resource: panel-ui
+      resolver:
+        function: fn-resolver
+      render: native
+      title: Experiment
+      icon: resource:static;icon.svg
+  jira:issueGlance:
+    - key: prereg-glance
+      resource: panel-ui
+      resolver:
+        function: fn-resolver
+      render: native
+      title: Prereg
+      label: Prereg
+      dynamicProperties:
+        function: fn-glance
+  jira:entityProperty:
+    - key: prereg-props
+      entityType: issue
+      propertyKey: prereg
+      values:
+        - path: state
+          type: string
+          searchAlias: preregState
+        - path: verdict
+          type: string
+          searchAlias: preregVerdict
+        - path: experiment
+          type: string
+          searchAlias: preregExperiment
+        - path: lift
+          type: number
+          searchAlias: preregLift
+        - path: looks
+          type: number
+          searchAlias: preregLooks
+  trigger:
+    - key: issue-updated
+      function: fn-issue-updated
+      events:
+        - avi:jira:updated:issue
+      filter:
+        ignoreSelf: true
+  function:
+    - key: fn-resolver
+      handler: index.resolver
+    - key: fn-glance
+      handler: index.glanceProperties
+    - key: fn-issue-updated
+      handler: index.onIssueUpdated
+    - key: fn-list
+      handler: index.actionListExperiments
+    - key: fn-plan
+      handler: index.actionGetPlan
+    - key: fn-submit
+      handler: index.actionSubmitResults
+    - key: fn-verdict
+      handler: index.actionGetVerdict
+    - key: fn-size
+      handler: index.actionSampleSize
+    - key: fn-draft
+      handler: index.actionDraftPlan
+    - key: fn-lock
+      handler: index.actionLockPlan
+    - key: fn-amend
+      handler: index.actionAmendPlan
+    - key: fn-brief
+      handler: index.actionGetBrief
+    - key: fn-record
+      handler: index.actionWriteRecord
+resources:
+  - key: page-ui
+    path: src/frontend/page.jsx
+  - key: panel-ui
+    path: src/frontend/panel.jsx
+  - key: static
+    path: static
+permissions:
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    - storage:app
+    - read:page:confluence
+    - write:page:confluence
+    - read:space:confluence
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/REPLACE_AT_SYNC
+  compatibility:
+    jira:
+      required: true
+    confluence:
+      required: false

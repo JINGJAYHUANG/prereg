@@ -1,0 +1,48 @@
+z(0.975)=1.959964 z(0.80)=0.841621 z(0.9875)=2.241403 z(0.95)=1.644854
+
+== EXP-1 annual plan preselected: primary checkout conversion 4.0% -> MDE +10% rel; guardrail 14-day refund rate (per purchase) must not rise > 1.0 pp
+planned total 78945 per arm 39473
+SRM chi2=0.2736 p=0.6010 split=[50.09, 49.91]
+conv control 4.00% treat 4.50% diff 0.4994 pp rel 12.48% CI95 rel [5.17%, 19.80%] z=3.550 p=0.000385
+refund ctrl 2.00% treat 1.89% harm -0.107 pp upper95 0.664 pp -> OK (p_NI=0.0091)
+
+== EXP-2 onboarding emails v2: 50/50, SRM
+SRM chi2=48.13 p=3.983e-12 split=[51.1, 48.9]
+(withheld) activation ctrl 21.60% treat 22.51% naive rel lift 4.22% naive p=0.0006
+after fix SRM chi2=0.0465 p=0.8293 split=[50.03, 49.97]
+after fix activation ctrl 22.55% treat 22.51% diff -0.033 pp rel -0.15% CI95 rel [-2.48%, 2.19%] p=0.902479
+EXP-2 planned total 46669 per arm 23335
+unsubscribe ctrl 0.439% treat 0.458% harm 0.019 pp upper95 0.090 pp -> OK
+
+== EXP-3 one-page checkout: baseline 4.5%, MDE +8% rel, min 14 days; day 6 of 14
+planned total 108060 per arm 54030
+SRM chi2=0.3535 p=0.5521
+progress 58.9%; accrual 10608/day; days for sample 11; ready on day 14 (min 14)
+day14 SRM chi2=0.1774 p=0.6736
+day14 conv ctrl 4.50% treat 4.96% diff 0.461 pp rel 10.24% CI95 rel [4.40%, 16.08%] p=0.000308
+day14 refund ctrl 2.09% treat 2.01% harm -0.080 pp upper95 0.566 pp -> OK
+
+== EXP-4 Pro price 12->14: primary revenue per visitor (mean), guardrail checkout conversion must not fall > 5% relative
+SRM chi2=0.5333 p=0.4652
+RPV ctrl $0.540 treat $0.567 diff $0.0270 rel 5.00% CI95 rel [1.44%, 8.56%] z=2.814 p=0.0049
+conv ctrl 4.50% treat 4.05% rel -10.00% harm(rel drop) 10.00% lower95 7.44% upper95 12.56% -> BREACH
+EXP-4 planned (MDE +6% rel on RPV, sd 2.488) total 185131 per arm 92566
+
+== EXP-5 subject lines: control vs B vs C (1/3 each); primary click-through 10.0%, MDE +5% rel
+planned total 209843 per arm 69948
+SRM chi2=0.0000 p=1.0000
+B 10.34% rel 3.40% p=0.0327 holm=0.0653 sig=False | C 10.32% rel 3.19% p=0.0448 holm=0.0653 sig=False
+naive (unadjusted) would call both significant at 0.05: True
+
+== EXP-6 draft (social proof on signup): baseline 12.0%, MDE +5% rel, 50/50
+planned total 94067 per arm 47034
+if MDE +10% rel: total 24002 per arm 12001
+
+== extras
+EXP-1 AOV ctrl $96.40 treat $112.80 rel 17.01% CI95 rel [13.97%, 20.06%] p=3.161e-33 (descriptive)
+EXP-3 day 3 units [15980, 15870] SRM chi2=0.3799 p=0.5377 progress 29.5%
+EXP-3 day 6 units [31900, 31750] SRM chi2=0.3535 p=0.5521 progress 58.9%
+EXP-5 unsubscribe B ctrl 0.300% treat 0.307% harm 0.0069 pp upper95 0.0546 pp -> OK
+EXP-5 unsubscribe C ctrl 0.300% treat 0.319% harm 0.0194 pp upper95 0.0676 pp -> OK
+EXP-4 conversion drop one-sided p(harm>0)=5.586e-10
+Twyman: EXP-1 0.12 vs 4xMDE 0.40 -> False; EXP-3 0.102 vs 0.32 -> False
